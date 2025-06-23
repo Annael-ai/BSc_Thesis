@@ -1,0 +1,181 @@
+MATCH (:Patient)-[r:EXPRESSES]->(:ExpressionGene {name: "aurka"})
+WHERE r.expression_value IS NOT NULL
+WITH r.expression_value AS val
+ORDER BY val
+WITH collect(val) AS values, count(val) AS total
+RETURN
+  values[toInteger(total * 0.10)] AS `10th Percentile`,
+  values[toInteger(total * 0.25)] AS `25th Percentile`,
+  values[toInteger(total * 0.50)] AS `50th Percentile (Median)`,
+  values[toInteger(total * 0.75)] AS `75th Percentile`,
+  values[toInteger(total * 0.90)] AS `90th Percentile`
+
+// Step 1: Count patients per bracket and grade
+MATCH (p:Patient)-[r:EXPRESSES]->(:ExpressionGene {name: "aurka"})
+WHERE r.expression_value IS NOT NULL AND p.neoplasm_histologic_grade IN ['1.0', '2.0', '3.0']
+WITH 
+  CASE 
+    WHEN r.expression_value > 1.3 THEN '>1.3'
+    WHEN r.expression_value > 0.5 THEN '>0.5'
+    WHEN r.expression_value < 0 THEN '<0'
+    ELSE '<0.5'
+  END AS AURKA_Bracket,
+  p.neoplasm_histologic_grade AS Grade,
+  COUNT(*) AS Count
+WITH AURKA_Bracket, Grade, Count
+// Step 2: Calculate total patients per bracket
+WITH AURKA_Bracket, collect({grade: Grade, count: Count}) AS grades, sum(Count) AS Total
+UNWIND grades AS g
+RETURN 
+  AURKA_Bracket,
+  g.grade AS Tumor_Grade,
+  g.count AS Count,
+  ROUND(100.0 * g.count / Total, 2) AS Percentage
+ORDER BY AURKA_Bracket, Tumor_Grade
+
+Above 1.3
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value > 1.3
+RETURN p, r, g
+
+Above 0.5
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value > 0.5
+RETURN p, r, g
+
+Below 0.5
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value < 0.5
+RETURN p, r, g
+
+Below 0
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value < 0
+RETURN p, r, g
+
+All patient nodes with AURKA expression 
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+RETURN p
+
+
+All patient nodes with AURKA expression above or below cutoff 
+Above 1.3
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value > 1.3
+RETURN p
+
+Above 0.5
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value > 0.5
+RETURN p
+
+Below 0.5
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value < 0.5
+RETURN p
+
+Below 0
+
+MATCH (p:Patient)-[r:EXPRESSES]->(g:ExpressionGene {name: 'aurka'})
+WHERE r.expression_value < 0
+RETURN p
+
+Browser queries TP53
+
+Percentage of triple-negative, basal-like, triple negative and basal-like patients among TP53 mutated patients
+
+// Step 1: Get all patients with TP53 mutation and their subtype flags
+MATCH (p:Patient)-[:HAS_MUTATION]->(:GeneMutation {name: 'tp53_mut'})
+WITH 
+  COUNT(p) AS total_tp53,
+  COUNT(CASE WHEN p.triple_negative = true THEN 1 END) AS triple_negative_count,
+  COUNT(CASE WHEN p.basal_like = true THEN 1 END) AS basal_like_count,
+  COUNT(CASE WHEN p.triple_negative = true AND p.basal_like = true THEN 1 END) AS both_count
+RETURN
+  total_tp53,
+  triple_negative_count,
+  ROUND(100.0 * triple_negative_count / total_tp53, 2) AS triple_negative_percentage,
+  basal_like_count,
+  ROUND(100.0 * basal_like_count / total_tp53, 2) AS basal_like_percentage,
+  both_count,
+  ROUND(100.0 * both_count / total_tp53, 2) AS triple_negative_and_basal_like_percentage
+
+MATCH (:Patient)-[r:HAS_MUTATION]->(:GeneMutation {name: 'tp53_mut'})
+WHERE r.mutation_location IS NOT NULL
+RETURN r.mutation_location AS Mutation_Site, COUNT(*) AS Count
+ORDER BY Count DESC
+LIMIT 5
+
+All patient nodes with tp53 mutation (force-based layout)
+
+MATCH (p:Patient)-[r:HAS_MUTATION]->(m:GeneMutation {name: 'tp53_mut'})
+RETURN p, r, m
+
+Coordinate based layout
+
+MATCH (p:Patient)-[r:HAS_MUTATION]->(m:GeneMutation {name: 'tp53_mut'})
+RETURN p
+
+Browser queries for CDH1
+Percentage of CDH1 mutated patients that had ILC or mixed carcinoma
+// Step 1: Get all patients with CDH1 mutation
+MATCH (p:Patient)-[:HAS_MUTATION]->(:GeneMutation {name: 'cdh1_mut'})
+WITH p
+
+// Step 2: Count total and those with ILC or Mixed diagnoses
+WITH 
+  COUNT(p) AS total_cdh1,
+  COUNT(CASE 
+    WHEN toLower(p.cancer_type_detailed) CONTAINS 'lobular' OR 
+         toLower(p.cancer_type_detailed) CONTAINS 'mixed' 
+    THEN 1 END) AS ilc_or_mixed
+
+RETURN 
+  total_cdh1,
+  ilc_or_mixed,
+  ROUND(100.0 * ilc_or_mixed / total_cdh1, 2) AS percentage_ilc_or_mixed
+
+MATCH (p:Patient)
+WHERE p.cancer_type_detailed = "Breast Invasive Lobular Carcinoma"
+RETURN avg(toFloat(p.age_at_diagnosis)) AS average_age_ilc
+
+MATCH (p:Patient)
+RETURN avg(toFloat(p.age_at_diagnosis)) AS average_age_all
+
+MATCH (p:Patient)
+WHERE p.cancer_type_detailed = "Breast Invasive Lobular Carcinoma" AND p.tumor_stage IS NOT NULL
+WITH p.tumor_stage AS stage, count(*) AS count
+WITH collect({stage: stage, count: count}) AS data
+WITH data, reduce(s = 0, x IN data | s + x.count) AS total
+UNWIND data AS row
+RETURN row.stage AS tumor_stage, row.count AS count,
+       round(100.0 * row.count / total, 2) AS percentage
+ORDER BY percentage DESC
+
+MATCH (p:Patient)
+WHERE p.tumor_stage IS NOT NULL
+WITH p.tumor_stage AS stage, count(*) AS count
+WITH collect({stage: stage, count: count}) AS data
+WITH data, reduce(s = 0, x IN data | s + x.count) AS total
+UNWIND data AS row
+RETURN row.stage AS tumor_stage, row.count AS count,
+       round(100.0 * row.count / total, 2) AS percentage
+ORDER BY percentage DESC
+
+All patients with cdh1 mutation (with relationships and gene mutation node)
+
+MATCH (p:Patient)-[r:HAS_MUTATION]->(g:GeneMutation {name: "cdh1_mut"})
+RETURN p, r, g
+
+All patients with cdh1 mutation
+
+MATCH (p:Patient)-[r:HAS_MUTATION]->(g:GeneMutation {name: "cdh1_mut"})
+RETURN p, r, g
